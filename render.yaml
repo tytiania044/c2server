@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: c2-server
+    runtime: node
+    buildCommand: ./render-build.sh
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # User needs to set this manually
+      - key: SESSION_SECRET
+        generateValue: true # This will generate a random value
+
+databases:
+  - name: c2-server-db
+    plan: starter # Choose an appropriate plan
+    ipAllowList: [] # Only allow internal connections by default
