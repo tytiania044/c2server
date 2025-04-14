@@ -17,6 +17,7 @@ import { authenticateUser, authenticateByApiKey, initializeStorage } from "./aut
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import crypto from "crypto";
+import { log } from "./vite";
 
 // Initialize session store
 const MemoryStore = createMemoryStore(session);
@@ -39,7 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         environment: process.env.NODE_ENV || 'development'
       });
     } catch (error) {
-      log(`Health check error: ${error}`, 'health');
+      console.error('Health check error:', error);
       res.status(500).json({ status: 'error', message: 'Health check failed' });
     }
   });
