@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-dark text-gray-200;
+  }
+  
+  :root {
+    /* Custom colors for our dark theme */
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 98%;
+    
+    /* Primary colors */
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    
+    /* Secondary colors */
+    --secondary: 215 25% 27%;
+    --secondary-foreground: 210 40% 98%;
+    
+    /* Accent colors */
+    --accent: 217 91% 60%;
+    --accent-foreground: 210 40% 98%;
+    
+    /* Muted colors */
+    --muted: 215 25% 27%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    
+    /* Card colors */
+    --card: 222.2 47.4% 15.2%;
+    --card-foreground: 210 40% 98%;
+    
+    /* Popover colors */
+    --popover: 222.2 47.4% 15.2%;
+    --popover-foreground: 210 40% 98%;
+    
+    /* Border colors */
+    --border: 215 27.9% 16.9%;
+    --input: 215 27.9% 16.9%;
+    
+    /* Success, warning, danger colors */
+    --success: 142.1 76.2% 36.3%;
+    --warning: 31 92% 50%;
+    --danger: 0 84.2% 60.2%;
+    
+    /* Dark theme specific colors */
+    --dark: 222.2 47.4% 11.2%;
+    --dark-lighter: 222.2 47.4% 15.2%;
+    --dark-lightest: 220 22% 22%;
+    
+    /* Ring color */
+    --ring: 224.3 76.3% 48%;
+    
+    /* Chart colors */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142.1 76.2% 36.3%;
+    --chart-3: 31 92% 50%;
+    --chart-4: 0 84.2% 60.2%;
+    --chart-5: 262.1 83.3% 57.8%;
+    
+    /* Border radius */
+    --radius: 0.5rem;
+  }
+  
+  /* Override sidebar styles */
+  .sidebar {
+    --sidebar-background: 222.2 47.4% 15.2%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 215 27.9% 16.9%;
+    --sidebar-ring: 224.3 76.3% 48%;
+  }
+}
+
+/* Additional custom styles */
+.bg-dark { @apply bg-[#0F172A]; }
+.bg-dark-lighter { @apply bg-[#1E293B]; }
+.bg-dark-lightest { @apply bg-[#334155]; }
+
+/* Custom color utility classes */
+.text-success { @apply text-[#4ade80]; }
+.text-warning { @apply text-[#f97316]; }
+.text-danger { @apply text-[#ef4444]; }
+.bg-success { @apply bg-[#4ade80]; }
+.bg-warning { @apply bg-[#f97316]; }
+.bg-danger { @apply bg-[#ef4444]; }
+
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+.terminal {
+  font-family: 'JetBrains Mono', monospace;
+  @apply bg-dark rounded-md text-sm p-4 overflow-y-auto text-gray-300;
+}
+
+.terminal-line {
+  @apply mb-2;
+}
+
+.terminal-prompt {
+  @apply text-success;
+}
+
+.terminal-command {
+  @apply text-gray-300;
+}
+
+.terminal-output {
+  @apply text-gray-400 whitespace-pre;
+}
