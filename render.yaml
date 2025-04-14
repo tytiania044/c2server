@@ -2,6 +2,8 @@ services:
   - type: web
     name: c2-server
     runtime: node
+    region: ohio # Choose a region close to your users
+    plan: starter # Choose the plan that fits your needs
     buildCommand: ./render-build.sh
     startCommand: npm run start
     envVars:
@@ -11,6 +13,9 @@ services:
         sync: false # User needs to set this manually
       - key: SESSION_SECRET
         generateValue: true # This will generate a random value
+    healthCheckPath: /api/health # We'll create this endpoint
+    healthCheckTimeout: 60
+    autoDeploy: true # Enable auto deployment on new commits
     # Make sure the node version is compatible
     buildFilter:
       paths:
@@ -23,9 +28,21 @@ services:
         - "**/*.html"
       ignoredPaths:
         - "node_modules"
+        - ".git"
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-XSS-Protection  
+        value: 1; mode=block
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
 
 # You can either use Render's Postgres or your own Neon database
 databases:
   - name: c2-server-db
     plan: starter
     ipAllowList: [] # Only allow internal connections by default
+    postgresMajorVersion: 15 # Specify PostgreSQL version
