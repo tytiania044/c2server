@@ -29,6 +29,20 @@ interface ConnectedClient {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint for Render deployment
+  app.get('/api/health', async (req, res) => {
+    try {
+      // Basic health check
+      res.json({ 
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+      });
+    } catch (error) {
+      log(`Health check error: ${error}`, 'health');
+      res.status(500).json({ status: 'error', message: 'Health check failed' });
+    }
+  });
   const httpServer = createServer(app);
   
   // Initialize settings and encryption
