@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -58,6 +59,26 @@ export const settings = pgTable("settings", {
   value: text("value").notNull(),
   description: text("description"),
 });
+
+// Define relations
+export const clientsRelations = relations(clients, ({ many }) => ({
+  commands: many(commands),
+  activities: many(activities),
+}));
+
+export const commandsRelations = relations(commands, ({ one }) => ({
+  client: one(clients, {
+    fields: [commands.clientId],
+    references: [clients.clientId],
+  }),
+}));
+
+export const activitiesRelations = relations(activities, ({ one }) => ({
+  client: one(clients, {
+    fields: [activities.clientId],
+    references: [clients.clientId],
+  }),
+}));
 
 // Schemas for insert operations
 export const insertUserSchema = createInsertSchema(users).pick({

