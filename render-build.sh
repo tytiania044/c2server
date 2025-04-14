@@ -6,7 +6,10 @@ set -e
 
 # Build the app
 npm install
-npm run build
+
+# Use npx to ensure we're using the local Vite installation
+npx vite build
+npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
 
 # Push schema to database
 npm run db:push

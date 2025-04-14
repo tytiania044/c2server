@@ -11,8 +11,21 @@ services:
         sync: false # User needs to set this manually
       - key: SESSION_SECRET
         generateValue: true # This will generate a random value
+    # Make sure the node version is compatible
+    buildFilter:
+      paths:
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.js"
+        - "**/*.jsx"
+        - "**/*.json"
+        - "**/*.css"
+        - "**/*.html"
+      ignoredPaths:
+        - "node_modules"
 
+# You can either use Render's Postgres or your own Neon database
 databases:
   - name: c2-server-db
-    plan: starter # Choose an appropriate plan
+    plan: starter
     ipAllowList: [] # Only allow internal connections by default
